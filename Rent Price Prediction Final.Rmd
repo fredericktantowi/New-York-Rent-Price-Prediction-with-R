@@ -1,0 +1,349 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(readr)
+library(caret)
+library(caTools)
+library(tidyverse)
+library(leaps)
+library(glmnet)
+library(fastDummies)
+library(mice)
+library(BiocManager)
+library(stringr)
+library(ModelMetrics)
+library(rpart)
+library(rpart.plot)
+library(tm)
+library(tibble)
+library(vtreat)
+library(xgboost)
+```
+
+Read Data
+```{r}
+#Initial Reading of the data set
+data <- read.csv("analysisData.csv", stringsAsFactors = TRUE)
+scoringData <- read.csv('scoringData.csv', stringsAsFactors = TRUE)
+
+#Creating a new column to classify data from either analysis or scoring data set
+data <- data %>% mutate(type = "analysis")
+scoringData <- scoringData %>% mutate(type = "scoring")
+
+#Combining the data into one for ease of cleaning and better scope of understanding
+combinedData <- bind_rows(data, scoringData)
+```
+
+Clean Zip Code
+```{r}
+#combinedData$zipcode <- gsub("[^\\d]", "", combinedData$zipcode, perl=TRUE)
+#combinedData$zipcode <- substr(combinedData$zipcode, 1, 5)
+#combinedData$zipcode[nchar(combinedData$zipcode) < 5] <- NA_character_
+#combinedData$zipcode <- as.numeric(combinedData$zipcode)
+```
+
+Boxplot Exploration
+```{r}
+#Box plot for observational exploratory data
+boxplot(combinedData$bedrooms)
+boxplot(combinedData$host_listings_count)
+boxplot(combinedData$host_total_listings_count)
+boxplot(combinedData$accommodates)
+boxplot(combinedData$bathrooms)
+boxplot(combinedData$square_feet)
+boxplot(combinedData$price)
+```
+
+
+Cleaning
+```{r}
+#Removing the % sign from host_acceptance_rate and changing it to numerical form
+combinedData$host_acceptance_rate <- str_extract(combinedData$host_acceptance_rate, "[[:digit:]]+")
+combinedData$host_acceptance_rate <- as.numeric(combinedData$host_acceptance_rate)
+
+#Removing the % sign from host_response_rate and changing it to numerical form
+combinedData$host_response_rate <- str_extract(combinedData$host_response_rate, "[[:digit:]]+")
+combinedData$host_response_rate <- as.numeric(combinedData$host_response_rate)
+
+
+#Host Verifications
+combinedData$host_verifications_length <- str_length(combinedData$host_verifications)
+
+#Turn factors into date format
+combinedData$first_review <- as.Date(paste(combinedData$first_review), "%Y-%m-%d")
+combinedData$last_review <- as.Date(paste(combinedData$last_review), "%Y-%m-%d")
+combinedData$host_since <- as.Date(paste(combinedData$host_since), "%Y-%m-%d")
+#DAYS SINCE from date to today
+combinedData$first_review = as.numeric(Sys.Date() - combinedData$first_review)
+combinedData$last_review = as.numeric(Sys.Date() - combinedData$last_review)
+combinedData$host_since = as.numeric(Sys.Date() - combinedData$host_since)
+
+
+#IMPUTATION
+#Classified the variables that will be imputed
+combinedData_missing = subset(combinedData, select = 
+                         c(host_response_rate, host_acceptance_rate, beds, security_deposit, host_since,
+                           cleaning_fee, square_feet, weekly_price, monthly_price, host_listings_count, zipcode, first_review, last_review,
+                           reviews_per_month))
+
+combinedData_caret = predict(preProcess(combinedData_missing,
+                                        method = 'bagImpute'),
+                             newdata = combinedData_missing)
+#Repplacing the na values with imputed values
+combinedData$host_response_rate <- combinedData_caret$host_response_rate
+combinedData$host_acceptance_rate <- combinedData_caret$host_acceptance_rate
+combinedData$beds <- combinedData_caret$beds
+combinedData$security_deposit <- combinedData_caret$security_deposit
+combinedData$cleaning_fee <- combinedData_caret$cleaning_fee
+combinedData$square_feet <-combinedData_caret$square_feet
+combinedData$weekly_price <- combinedData_caret$weekly_price
+combinedData$monthly_price <- combinedData_caret$monthly_price
+combinedData$host_listings_count <- combinedData_caret$host_listings_count
+combinedData$zipcode <- combinedData_caret$zipcode
+combinedData$first_review <- combinedData_caret$first_review
+combinedData$last_review <- combinedData_caret$last_review
+combinedData$reviews_per_month <- combinedData_caret$reviews_per_month
+combinedData$host_since <- combinedData_caret$host_since
+
+
+####################################################################################################################################################
+
+####################################################################################################################################################
+### Amenities as dummy variables into combinedData
+combinedData$dummy_wifi <- str_detect(combinedData$amenities, "Wifi")
+combinedData$dummy_doorman <- str_detect(combinedData$amenities, "Doorman")
+combinedData$dummy_bathtub <- str_detect(combinedData$amenities, "Bathtub")
+combinedData$dummy_pool <- str_detect(combinedData$amenities, "Pool")
+combinedData$dummy_family <- str_detect(combinedData$amenities, "Family/kid friendly")
+combinedData$dummy_AC <- str_detect(combinedData$amenities, "Air conditioning")
+combinedData$dummy_Hottub <- str_detect(combinedData$amenities, "Hot tub")
+combinedData$dummy_Essentials <- str_detect(combinedData$amenities, "Essentials")
+combinedData$dummy_Heating <- str_detect(combinedData$amenities, "Heating")
+combinedData$dummy_Smokedetector<- str_detect(combinedData$amenities, "Smoke detector")
+combinedData$dummy_Firstaid <- str_detect(combinedData$amenities, "First aid kit")
+combinedData$dummy_FireE <- str_detect(combinedData$amenities, "Fire extinguisher")
+combinedData$dummy_Lockbedroom <- str_detect(combinedData$amenities, "Lock on bedroom door")
+combinedData$dummy_Hangers <- str_detect(combinedData$amenities, "Hangers")
+combinedData$dummy_Hairdryer <- str_detect(combinedData$amenities, "Hair dryer")
+combinedData$dummy_workspace <- str_detect(combinedData$amenities, "Laptop friendly workspace")
+combinedData$dummy_shades <- str_detect(combinedData$amenities, "Room-darkening shades")
+combinedData$dummy_Hwater <- str_detect(combinedData$amenities, "Hot water")
+combinedData$dummy_linens <- str_detect(combinedData$amenities, "Bed linens")
+combinedData$dummy_extrabeddings <- str_detect(combinedData$amenities, "Extra pillows and blankets")
+combinedData$dummy_Microwave <- str_detect(combinedData$amenities, "Microwave")
+combinedData$dummy_Refrigerator <- str_detect(combinedData$amenities, "Refrigerator")
+combinedData$dummy_cutlery <- str_detect(combinedData$amenities, "Dishes and silverware")
+combinedData$dummy_HWaterKettle <- str_detect(combinedData$amenities, "Hot water kettle")
+combinedData$dummy_greets <- str_detect(combinedData$amenities, "Host greets you")
+combinedData$dummy_Wheelchairaccess <- str_detect(combinedData$amenities, "Wheelchair accessible")
+combinedData$dummy_Pets_allowed <- str_detect(combinedData$amenities, "Pets allowed")
+combinedData$dummy_Elevator <- str_detect(combinedData$amenities, "Elevator")
+combinedData$dummy_Pets_allowed <- str_detect(combinedData$amenities, "Pets live on this property")
+combinedData$dummy_Kitchen <- str_detect(combinedData$amenities, "Kitchen")
+combinedData$dummy_Washer <- str_detect(combinedData$amenities, "Washer")
+combinedData$dummy_TurndownService <- str_detect(combinedData$amenities, "Turndown service")
+combinedData$dummy_Free_parking <- str_detect(combinedData$amenities, "Free street parking")
+combinedData$dummy_Dryer <- str_detect(combinedData$amenities, "Dryer")
+combinedData$dummy_24CheckIn <- str_detect(combinedData$amenities, "24-hour check-in")
+combinedData$dummy_Internet <- str_detect(combinedData$amenities, "Internet")
+combinedData$dummy_Room_darkening_shades <- str_detect(combinedData$amenities, "Room-darkening shades")
+combinedData$dummy_intercom <- str_detect(combinedData$amenities, "Buzzer/wireless intercom")
+combinedData$dummy_Safety_card <- str_detect(combinedData$amenities, "Safety card")
+combinedData$dummy_TV <- str_detect(combinedData$amenities, "TV")
+combinedData$dummy_Cable <- str_detect(combinedData$amenities, "Cable TV")
+combinedData$dummy_Waterfront <- str_detect(combinedData$amenities, "Waterfront")
+combinedData$dummy_Oven<- str_detect(combinedData$amenities, "Oven")
+combinedData$dummy_Stove <- str_detect(combinedData$amenities, "Stove")
+combinedData$dummy_Single_l <- str_detect(combinedData$amenities, "Single level home")
+combinedData$dummy_Lake_access<- str_detect(combinedData$amenities, "Lake access")
+combinedData$dummy_Paid_p <- str_detect(combinedData$amenities, "Paid parking on premises")
+combinedData$dummy_Pets_p <- str_detect(combinedData$amenities, "Pets live on this property")
+combinedData$dummy_amenity_49 <- str_detect(combinedData$amenities, "en.hosting_amenity_49")
+combinedData$dummy_amenity_50 <- str_detect(combinedData$amenities, "en.hosting_amenity_50")
+combinedData$dummy_Smoking_allowed <- str_detect(combinedData$amenities, "Smoking allowed")
+combinedData$dummy_Carbonmonoxide_detector <- str_detect(combinedData$amenities, "Carbon monoxide detector")
+combinedData$dummy_Luggage_dropoff <- str_detect(combinedData$amenities, "Luggage dropoff allowed")
+combinedData$dummy_Gym <- str_detect(combinedData$amenities, "Gym")
+combinedData$dummy_Self_checkin <- str_detect(combinedData$amenities, "Self check-in")
+combinedData$dummy_Front_desk<- str_detect(combinedData$amenities, "Front desk/doorperson")
+combinedData$dummy_Private_entrance <- str_detect(combinedData$amenities, "Private entrance")
+combinedData$dummy_Window_guards <- str_detect(combinedData$amenities, "Window guards")
+combinedData$dummy_Ethernet<- str_detect(combinedData$amenities, "Ethernet connection")
+combinedData$dummy_Microwave <- str_detect(combinedData$amenities, "Microwave")
+combinedData$dummy_Coffee_maker <- str_detect(combinedData$amenities, "Coffee maker")
+combinedData$dummy_Outlet <- str_detect(combinedData$amenities, "Outlet covers")
+combinedData$dummy_Babysitter<- str_detect(combinedData$amenities, "Babysitter recommendations")
+combinedData$dummy_Long_stays <- str_detect(combinedData$amenities, "Long term stays allowed")
+combinedData$dummy_Widehall <- str_detect(combinedData$amenities, "Wide hallway clearance")
+combinedData$dummy_Accessible_height_bed<- str_detect(combinedData$amenities, "Accessible-height bed")
+combinedData$dummy_Wdoorway <- str_detect(combinedData$amenities, "Wide doorway")
+combinedData$dummy_Accessible_height_toilet <- str_detect(combinedData$amenities, "Accessible-height toilet")
+combinedData$dummy_clearance_washroom <- str_detect(combinedData$amenities, "Wide clearance to shower, toilet")
+combinedData$dummy_Step_free_access <- str_detect(combinedData$amenities, "Step-free access")
+combinedData$dummy_Breakfast <- str_detect(combinedData$amenities, "Breakfast")
+combinedData$dummy_Keypad <- str_detect(combinedData$amenities, "Keypad")
+combinedData$dummy_Dishwasher <- str_detect(combinedData$amenities, "Dishwasher")
+combinedData$dummy_BuildingStaff <- str_detect(combinedData$amenities, "Building Staff")
+combinedData$dummy_EVCharger <- str_detect(combinedData$amenities, "EV charger")
+combinedData$dummy_SmartLock <- str_detect(combinedData$amenities, "Smart lock")
+combinedData$dummy_PatioOrBalcony <- str_detect(combinedData$amenities, "Patio or balcony")
+
+
+##################################################################################################################################################
+##################################################################################################################################################
+
+#AMENITIES TURN INTO POINT SYSTEM
+combinedData$amenities <- as.character(combinedData$amenities)
+combinedData$amenities <- gsub(',',' ',combinedData$amenities)
+corpus <- iconv(combinedData$amenities)
+corpus <- Corpus(VectorSource(corpus))
+cleanset <- tm_map(corpus, tolower)
+tdm <- TermDocumentMatrix(cleanset)
+w <- rowSums(as.matrix(tdm));w
+exp_amenities_1 <- c('pet','pool','jacuzzi','backyard','washer', 'private', 'doorman', 'staff', 'lake', 'patio', 'ev', 'kitchen','waterfront', 'shades', 'bar','service','smart' ,'stove','gym','eleavtor','family','tub','grill')
+amenities_keywords <- tm_term_score(tdm,exp_amenities_1)
+combinedData$amenities_scoring <- amenities_keywords
+
+##################################################################################################################################################
+##################################################################################################################################################
+
+combinedData2 <- combinedData[, c("host_response_time","host_since","host_acceptance_rate","host_is_superhost", "type",
+                                     "neighbourhood_group_cleansed","is_location_exact","room_type", "property_type","bed_type",
+                                     "accommodates","bathrooms","bedrooms","amenities","weekly_price","security_deposit","cleaning_fee",
+                                     "guests_included","extra_people", "minimum_nights","minimum_minimum_nights","minimum_maximum_nights",
+                                     "maximum_maximum_nights","price","minimum_nights_avg_ntm","number_of_reviews","number_of_reviews_ltm",
+                                  "last_review","review_scores_rating","review_scores_cleanliness","review_scores_location","cancellation_policy",
+                                  "calculated_host_listings_count_private_rooms","calculated_host_listings_count_shared_rooms","amenities_scoring",
+                                  ###AMENITIES
+                                  "dummy_doorman","dummy_bathtub","dummy_pool","dummy_family","dummy_AC","dummy_Hottub","dummy_Essentials",
+                                  "dummy_Heating","dummy_Firstaid","dummy_FireE","dummy_Lockbedroom","dummy_Hairdryer","dummy_shades","dummy_Hwater"
+                                  ,"dummy_linens","dummy_extrabeddings","dummy_Microwave","dummy_Refrigerator","dummy_greets",
+                                  "dummy_Wheelchairaccess","dummy_Pets_allowed","dummy_Elevator",
+                                  "dummy_Kitchen","dummy_Washer","dummy_TurndownService","dummy_Dryer","dummy_24CheckIn","dummy_Internet",
+                                  "dummy_intercom","dummy_Safety_card","dummy_Waterfront","dummy_Oven","dummy_Stove","dummy_Single_l",
+                                  "dummy_Lake_access","dummy_Paid_p","dummy_Pets_p","dummy_amenity_49","dummy_amenity_50","dummy_Smoking_allowed",
+                                  "dummy_Luggage_dropoff","dummy_Gym","dummy_Front_desk","dummy_Private_entrance",
+                                  "dummy_Window_guards","dummy_Ethernet","dummy_Coffee_maker","dummy_Long_stays",
+                                  "dummy_Widehall","dummy_Accessible_height_bed","dummy_Wdoorway","dummy_clearance_washroom","dummy_Dishwasher",
+                                  "dummy_BuildingStaff", "dummy_EVCharger", "dummy_SmartLock", "dummy_PatioOrBalcony")]
+
+
+```
+
+CHECK
+```{r}
+#Class, data type and unique values of all variables in the combinedData data frame
+view_le_unique <- lapply(combinedData, unique)
+
+colSums(is.na(combinedData2))
+```
+
+Splitting
+```{r}
+#Creating a new data frame for analysis data set (TRAIN) and deleting the type column
+data_analysis <- filter(combinedData2, type == "analysis")
+data_analysis <- data_analysis[, !names(data_analysis) %in% c("type")]
+#Creating a new data frame for scoring data set (TEST) and deleting the type column
+test_data <- filter(combinedData, type == "scoring")
+test_data <- test_data[, !names(test_data) %in% c("type")]
+```
+
+LASSO
+```{r}
+x = model.matrix(price~.,data=data_analysis)
+y = data_analysis$price
+ridge = glmnet(x = x, 
+               y = y, 
+               alpha = 0)
+
+cv_lasso = cv.glmnet(x = x, 
+                     y = y, 
+                     alpha = 1,
+                     type.measure = 'mse')
+coef(cv_lasso, s = cv_lasso$lambda.1se)
+
+
+lasso_variables <- data_analysis[, c("host_response_time","host_acceptance_rate","host_is_superhost",
+                                     "neighbourhood_group_cleansed","is_location_exact","room_type",
+                                     "accommodates","bathrooms","bedrooms","amenities","weekly_price","security_deposit","cleaning_fee",
+                                     "guests_included","extra_people", "minimum_nights","minimum_minimum_nights","minimum_maximum_nights",
+                                     "maximum_maximum_nights","price", 
+                                     "minimum_nights_avg_ntm","availability_60","availability_90","availability_365","number_of_reviews", 
+                                     "number_of_reviews_ltm", 
+                                     "last_review","review_scores_rating","review_scores_cleanliness","review_scores_location","instant_bookable",
+                                     "cancellation_policy", "calculated_host_listings_count_private_rooms",
+                                     "calculated_host_listings_count_shared_rooms")]
+
+```
+
+
+Linear Model
+```{r}
+#Linear Model 1
+#Best subset selection
+subsets = regsubsets(price~.,data_analysis, nvmax=11, really.big = T)
+#Linear regression model 1
+lin_reg_model1 <- lm(price~., data_analysis)
+summary(lin_reg_model1)
+
+#Linear Model 2 (With Lasso)
+lm_model2 <- lm(price~., data = lasso_variables)
+```
+
+Tree Analysis
+```{r}
+treeModel1 <- rpart(price~., data = data_analysis, method = 'anova')
+summary(treeModel1)
+```
+
+Forest
+```{r}
+library(randomForest)
+forest_model = randomForest(price~.,data=data_analysis,ntree = 100)
+
+```
+
+XG BOOST ATTEMPT --> Not Used in the End
+```{r}
+combinedXG <- combinedData2[,!names(combinedData2) %in% c("amenities")]
+
+
+trt = designTreatmentsZ(dframe = combinedXG,
+                        varlist = names(combinedXG)[1:10])
+newvars = trt$scoreFrame[trt$scoreFrame$code%in% c('clean','lev'),'varName']
+train_input = prepare(treatmentplan = trt, 
+                      dframe = combinedXG,
+                      varRestriction = newvars)
+
+head(train_input)
+
+
+tune_nrounds = xgb.cv(data=as.matrix(train_input), 
+                      label = combinedXG$price,
+                      missing = NA,
+                      nrounds=250,
+                      nfold = 5,
+                      verbose = 0)
+
+ggplot(data=tune_nrounds$evaluation_log, aes(x=iter, y=test_rmse_mean))+
+  geom_point(size=0.4, color='sienna')+
+  geom_line(size=0.1, alpha=0.1)+
+  theme_bw()
+```
+
+Submission
+```{r}
+pred1 <-predict(forest_model, newdata = test_data)
+
+submissionFile = data.frame(id=test_data$id, price=pred1)
+write.csv(submissionFile, 'submission_forest2.csv', row.names=FALSE)
+```
+
+
+```{r}
+```
+
