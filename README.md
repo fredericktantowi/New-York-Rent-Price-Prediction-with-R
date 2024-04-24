@@ -5,24 +5,30 @@
 
 This project aims to develop a machine learning model to predict rental prices for Airbnb listings in New York City. The model will leverage various factors that influence pricing decisions, helping potential hosts optimize their listings and guests estimate costs effectively.
 
-    Data Preprocessing:
+Data Preprocessing:
+
         Clean and format the Airbnb data in R, handling missing values and outliers.
         Engineer new features if necessary (e.g., combining features, deriving categorical variables).
         Prepare the data for machine learning modeling by splitting it into training and testing sets.
-    Exploratory Data Analysis:
+        
+Exploratory Data Analysis:
         Analyze the distribution of rental prices and identify factors potentially influencing pricing (e.g., location, room type, amenities).
         Visualize these relationships using appropriate charts and graphs.
-    Feature Selection:
+        
+Feature Selection:
+
         Identify the most relevant features that contribute significantly to predicting rental prices. This may involve techniques like correlation analysis or feature importance scores.
-    Model Development:
+
+Model Development:
+
         Train a Random Forest regression model on the prepared data. Random Forest is chosen due to its effectiveness in handling a variety of data types and its inherent resistance to overfitting.
         Tune the model's hyperparameters to optimize its performance.
-    Model Evaluation:
+    
+Model Evaluation:
+
         Evaluate the model's performance on the testing set using metrics like Mean Squared Error (MSE) or R-squared.
         Consider alternative models (e.g., Linear Regression, Gradient Boosting) for comparison, if desired.
-    Deployment and Interpretation:
-        Develop a user-friendly interface (optional) or deploy the model as a web service to allow users to predict rental prices based on their input criteria.
-        Explain the model's predictions by analyzing feature importance scores and identifying the key factors driving rental price variations.
+
 
 Expected Outcomes:
 
@@ -39,4 +45,4 @@ Software and Tools:
 
 Project Significance:
 
-This project can empower both Airbnb hosts and guests. Hosts can leverage the model's predictions to set competitive prices that maximize their earnings. Guests can utilize the model to estimate rental costs accurately, informing their budgeting and accommodation selection process.
+    This project can empower both Airbnb hosts and guests. Hosts can leverage the model's predictions to set competitive prices that maximize their earnings. Guests can utilize the model to estimate rental costs accurately, informing their budgeting and accommodation selection process.
